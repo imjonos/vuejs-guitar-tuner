@@ -1,15 +1,15 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <img alt="Vue logo" width="40" src="./assets/logo.png">
+  <tuner></tuner>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import Tuner from './components/Tuner.vue'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    Tuner
   }
 }
 </script>
