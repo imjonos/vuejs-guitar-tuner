@@ -54,14 +54,7 @@ export default {
             isRead: false,
             stringIndex: 0,
             string: null,
-            strings: [
-                [0, 320, 340, 660],
-                [0, 240, 254, 494],
-                [0, 190, 202, 392],
-                [0, 140, 154, 294],
-                [0, 100, 120, 220],
-                [0, 75, 89, 164]
-            ],
+            strings: [330, 247, 196, 147, 110, 82],
             colors: ["#9399ff", "#14ffec", "#00bbf0"],
             segments: [
                 {
@@ -83,7 +76,7 @@ export default {
         }
     },
     mounted() {
-        this.string = this.strings[this.stringIndex];
+        this.setString(this.stringIndex);
     },
     methods: {
         start() {
@@ -100,12 +93,26 @@ export default {
         read() {
             let mic = this.ctx.createMediaStreamSource(this.audio),
                 analyser = this.ctx.createAnalyser(),
-                scriptProcessor = this.ctx.createScriptProcessor();
+                scriptProcessor = this.ctx.createScriptProcessor(),
+                filter1 = this.ctx.createBiquadFilter(),
+                filter2 = this.ctx.createBiquadFilter()
+
+            filter1.type = 'lowpass'; // High-pass filter (Тип фильтра)
+            filter1.frequency.value = this.string[3]; // Cutoff to 1kHZ (Базовая частота)
+            //filter1.frequency.Q = 1; // Quality factor (Добротность)
+            mic.connect(filter1);
+
+            filter2.type = 'highpass'; // High-pass filter (Тип фильтра)
+            filter2.frequency.value = this.string[0]; // Cutoff to 1kHZ (Базовая частота)
+            //filter2.frequency.Q = 1; // Quality factor (Добротность)
+            filter1.connect(filter2);
+
             analyser.fftSize = 2048;
-            analyser.minDecibels = -60;
+            analyser.minDecibels = -90;
             analyser.maxDecibels = -30;
             analyser.smoothingTimeConstant = 0.30;
-            mic.connect(analyser);
+            filter2.connect(analyser);
+
             analyser.connect(scriptProcessor);
             scriptProcessor.connect(this.ctx.destination);
             scriptProcessor.addEventListener("audioprocess", () => {
@@ -114,10 +121,8 @@ export default {
                     let data = new Uint8Array(analyser.frequencyBinCount),
                         largest = 0;
                     analyser.getByteFrequencyData(data);
-                    for (let i = 0; i < 30; i++) {
-                        if (data[i]>this.string[0] &&
-                            data[i]<this.string[3] &&
-                            data[i] >= data[largest]) {
+                    for (let i = 0; i < analyser.frequencyBinCount; i++) {
+                        if (data[i] >= data[largest]) {
                             largest = i;
                         }
                     }
@@ -149,10 +154,14 @@ export default {
                 this.read();
             });
         },
+        setString(index=0){
+            let freq = this.strings[index];
+            this.string = [freq-20, freq-5, freq+5, freq+20]
+        }
     },
     watch:{
         stringIndex(val){
-            this.string = this.strings[val];
+            this.setString(val);
         }
     }
 }
