@@ -1,5 +1,14 @@
 <template>
     <div>
+        <select v-model="stringIndex">
+            <option value="0">1 (E)	329.63 Hz	E4</option>
+            <option value="1">2 (B)	246.94 Hz	B3</option>
+            <option value="2">3 (G)	196.00 Hz	G3</option>
+            <option value="3">4 (D)	146.83 Hz	D3</option>
+            <option value="4">5 (A)	110.00 Hz	A2</option>
+            <option value="5">6 (E)	82.41 Hz	E2</option>
+        </select>
+        <br><br>
         <vue-speedometer
             v-if="string"
             :width="500"
@@ -30,6 +39,12 @@ export default {
     components: {
         VueSpeedometer
     },
+    /**1 (E)	329.63 Hz	E4
+     2 (B)	246.94 Hz	B3
+     3 (G)	196.00 Hz	G3
+     4 (D)	146.83 Hz	D3
+     5 (A)	110.00 Hz	A2
+     6 (E)	82.41 Hz	E2 **/
     data() {
         return {
             data: {},
@@ -40,7 +55,12 @@ export default {
             stringIndex: 0,
             string: null,
             strings: [
-                [300, 430, 460, 590]
+                [0, 320, 340, 660],
+                [0, 240, 254, 494],
+                [0, 190, 202, 392],
+                [0, 140, 154, 294],
+                [0, 100, 120, 220],
+                [0, 75, 89, 164]
             ],
             colors: ["#9399ff", "#14ffec", "#00bbf0"],
             segments: [
@@ -82,7 +102,9 @@ export default {
                 analyser = this.ctx.createAnalyser(),
                 scriptProcessor = this.ctx.createScriptProcessor();
             analyser.fftSize = 2048;
-            analyser.smoothingTimeConstant = 0.3;
+            analyser.minDecibels = -60;
+            analyser.maxDecibels = -30;
+            analyser.smoothingTimeConstant = 0.30;
             mic.connect(analyser);
             analyser.connect(scriptProcessor);
             scriptProcessor.connect(this.ctx.destination);
@@ -92,18 +114,19 @@ export default {
                     let data = new Uint8Array(analyser.frequencyBinCount),
                         largest = 0;
                     analyser.getByteFrequencyData(data);
-                    for (let i = 0; i < analyser.frequencyBinCount; i++) {
-                        if (data[i] > data[largest]) {
+                    for (let i = 0; i < 30; i++) {
+                        if (data[i]>this.string[0] &&
+                            data[i]<this.string[3] &&
+                            data[i] >= data[largest]) {
                             largest = i;
                         }
                     }
-                    frequency = largest * (this.ctx.sampleRate / analyser.fftSize);
-                    console.log(largest, this.ctx.sampleRate, analyser.fftSize);
+                    frequency = largest * Math.ceil(this.ctx.sampleRate/analyser.fftSize);
                     if(frequency>this.string[3]) frequency = this.string[3];
                     else
                         if(frequency<this.string[0]) frequency = this.string[0];
                 }
-                this.frequency = Math.round(frequency);
+                this.frequency = Math.round(frequency*100)/100;
 
             });
         },
@@ -111,17 +134,11 @@ export default {
             this.setContext();
             if (navigator.mediaDevices.getUserMedia === undefined) {
                 navigator.mediaDevices.getUserMedia = function (constraints) {
-
-                    // First get ahold of the legacy getUserMedia, if present
                     let getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
 
-                    // Some browsers just don't implement it - return a rejected promise with an error
-                    // to keep a consistent interface
                     if (!getUserMedia) {
                         return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
                     }
-
-                    // Otherwise, wrap the call to the old navigator.getUserMedia with a Promise
                     return new Promise(function (resolve, reject) {
                         getUserMedia.call(navigator, constraints, resolve, reject);
                     });
@@ -131,6 +148,11 @@ export default {
                 this.audio = stream;
                 this.read();
             });
+        },
+    },
+    watch:{
+        stringIndex(val){
+            this.string = this.strings[val];
         }
     }
 }
