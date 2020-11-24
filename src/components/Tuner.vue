@@ -1,36 +1,24 @@
 <template>
     <div>
         <vue-speedometer
+            v-if="string"
             :width="500"
             :needleHeightRatio="0.7"
             :value="frequency"
-            :customSegmentStops='[0, 250, 750, 1000]'
-            :segmentColors='["#9399ff", "#14ffec", "#00bbf0"]'
-            :currentValueText="String(frequency)"
-            :customSegmentLabels='[
-        {
-          text: "Good",
-          position: "OUTSIDE",
-          color: "#d8dee9",
-        },
-        {
-          text: "Great",
-          position: "OUTSIDE",
-          color: "#d8dee9",
-        },
-        {
-          text: "Awesome!",
-          position: "OUTSIDE",
-          color: "#d8dee9",
-        },
-      ]'
+            :customSegmentStops="string"
+            :segmentColors="colors"
+            :currentValueText="String(frequency)+'Hz'"
+            :customSegmentLabels="segments"
             :ringWidth="47"
             :needleTransitionDuration="3333"
             needleTransition="easeElastic"
             needleColor="#a7ff83"
-            textColor="#d8dee9"
+            textColor="#000"
+            :minValue="string[0]"
+            :maxValue="string[3]"
         />
-        <a href="" @click.prevent="start()">Start</a>  <a href="" @click.prevent="stop()">Stop</a>
+        <button @click="start()">Start</button>
+        <button @click="stop()">Stop</button>
     </div>
 </template>
 
@@ -47,45 +35,76 @@ export default {
             data: {},
             ctx: {},
             audio: null,
-            frequency: 0
+            frequency: 0,
+            isRead: false,
+            stringIndex: 0,
+            string: null,
+            strings: [
+                [300, 430, 460, 590]
+            ],
+            colors: ["#9399ff", "#14ffec", "#00bbf0"],
+            segments: [
+                {
+                    text: "Low",
+                    position: "OUTSIDE",
+                    color: "#000",
+                },
+                {
+                    text: "Great",
+                    position: "OUTSIDE",
+                    color: "#000",
+                },
+                {
+                    text: "High",
+                    position: "OUTSIDE",
+                    color: "#000",
+                }
+            ]
         }
     },
     mounted() {
-
+        this.string = this.strings[this.stringIndex];
     },
     methods: {
-        start(){
+        start() {
             this.init();
+            this.isRead = true;
         },
-        stop(){
-            this.audio.getTracks().forEach(function(track) {
-                track.stop();
-            });
+        stop() {
+            this.isRead = false;
+            this.frequency = 0;
         },
-        setContext(){
+        setContext() {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         },
-        read(){
-            let mic = this.ctx.createMediaStreamSource(this.audio);
-            console.log('stream', this.audio);
-            let analyser = this.ctx.createAnalyser();
-            let scriptProcessor = this.ctx.createScriptProcessor();
+        read() {
+            let mic = this.ctx.createMediaStreamSource(this.audio),
+                analyser = this.ctx.createAnalyser(),
+                scriptProcessor = this.ctx.createScriptProcessor();
             analyser.fftSize = 2048;
-            // osc = ctx.createOscillator();
+            analyser.smoothingTimeConstant = 0.3;
             mic.connect(analyser);
             analyser.connect(scriptProcessor);
             scriptProcessor.connect(this.ctx.destination);
-            scriptProcessor.addEventListener("audioprocess", ()=>{
-                let data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                let idx = 0;
-                for (let j = 0; j < analyser.frequencyBinCount; j++) {
-                    if (data[j] > data[idx]) {
-                        idx = j;
+            scriptProcessor.addEventListener("audioprocess", () => {
+                let frequency = this.string[0];
+                if (this.isRead) {
+                    let data = new Uint8Array(analyser.frequencyBinCount),
+                        largest = 0;
+                    analyser.getByteFrequencyData(data);
+                    for (let i = 0; i < analyser.frequencyBinCount; i++) {
+                        if (data[i] > data[largest]) {
+                            largest = i;
+                        }
                     }
+                    frequency = largest * (this.ctx.sampleRate / analyser.fftSize);
+                    console.log(largest, this.ctx.sampleRate, analyser.fftSize);
+                    if(frequency>this.string[3]) frequency = this.string[3];
+                    else
+                        if(frequency<this.string[0]) frequency = this.string[0];
                 }
-                this.frequency = idx * this.ctx.sampleRate / analyser.fftSize;
-                console.log('frequency', this.frequency);
+                this.frequency = Math.round(frequency);
+
             });
         },
         init() {
@@ -108,7 +127,7 @@ export default {
                     });
                 }
             }
-            navigator.mediaDevices.getUserMedia({audio: true, video: false}).then((stream)=> {
+            navigator.mediaDevices.getUserMedia({audio: true, video: false}).then((stream) => {
                 this.audio = stream;
                 this.read();
             });
