@@ -28,6 +28,8 @@
         />
         <button v-if="!isRead" @click="start()">Start</button>
         <button v-else @click="stop()">Stop</button>
+        <br><br>
+        <canvas id="graph"></canvas>
     </div>
 </template>
 
@@ -126,16 +128,20 @@ export default {
             scriptProcessor.addEventListener("audioprocess", () => {
                 let frequency = this.frequency;
                 if (this.isRead && this.isTime) {
-                    this.isTime = false;
+                    //this.isTime = false;
                     setTimeout(()=>{
                         this.isTime=true;
                     }, 500);
                     let data = new Uint8Array(analyser.frequencyBinCount),
                         largest = 0,
                         lv,
+                        timeData = new Uint8Array(analyser.frequencyBinCount),
                         result;
-                    analyser.getByteFrequencyData(data);
-
+                   // analyser.getByteFrequencyData(data);
+                    analyser.getByteTimeDomainData(timeData);
+                    data = timeData;
+                    this.draw(timeData);
+                   // this.getFrequency(timeData);
                     /*let avgResult = 0;
                     _.forEach(data, val =>{
                         avgResult +=val*val;
@@ -147,11 +153,12 @@ export default {
                             lv=data[i];
                         }
                     }
-                    result = largest*(this.ctx.sampleRate/analyser.fftSize);
+                    result = 1 / (largest / this.ctx.sampleRate);
+                    //result = largest*(this.ctx.sampleRate/analyser.fftSize);
                     if(result>this.string[3]) frequency = this.string[3];
                     else if(result<this.string[0]) frequency = this.string[0];
                     else frequency = result;
-                    console.log('largest', largest,'lv',lv,'val',result);
+                    console.log('largest', largest,'lv',lv,'val',result, 'avg', this.getAverageFrequency(data));
 
                 }
                 this.frequency = Math.round(frequency*100)/100;
@@ -181,6 +188,34 @@ export default {
             let freq = Math.round(this.strings[index]);
             this.string = [freq-20, freq-5, freq+5, freq+20]
             this.frequency = this.string[0];
+        },
+        getAverageFrequency(data) {
+            let value = 0;
+            for ( let i = 0; i < data.length; i ++ ) {
+                value += data[i];
+            }
+            return value / data.length;
+        },
+        draw(data) {
+            let canvas = document.getElementById("graph"),
+                canvasContext = canvas.getContext("2d");
+            canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+            _.forEach(data, (item, i) => {
+                canvasContext.fillRect(i, item, 1, 1);
+            });
+        },
+        getFrequency(data){
+            let lastPos = 0,
+                lastItem = 0;
+            _.forEach(data,(item, i) => {
+                if (item > 128 && lastItem <= 128) { // we have crossed below the mid point
+                    const elapsedSteps = i - lastPos; // how far since the last time we did this
+                    lastPos = i;
+                    const hertz = 1 / (elapsedSteps / this.ctx.sampleRate);
+                    this.frequency = hertz;
+                }
+                lastItem = item;
+            });
         }
     },
     watch:{
