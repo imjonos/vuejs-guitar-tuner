@@ -26,13 +26,14 @@
             :minValue="string[0]"
             :maxValue="string[3]"
         />
-        <button @click="start()">Start</button>
-        <button @click="stop()">Stop</button>
+        <button v-if="!isRead" @click="start()">Start</button>
+        <button v-else @click="stop()">Stop</button>
     </div>
 </template>
 
 <script>
-import VueSpeedometer from "vue-speedometer"
+import VueSpeedometer from "vue-speedometer";
+import _ from "lodash";
 
 export default {
     name: "Tuner",
@@ -54,7 +55,9 @@ export default {
             isRead: false,
             stringIndex: 0,
             string: null,
-            strings: [330, 247, 196, 147, 110, 82],
+            strings: [329.63, 246.94, 196, 146.83, 110, 82.41],
+            offsets: [],
+            isTime: true,
             colors: ["#9399ff", "#14ffec", "#00bbf0"],
             segments: [
                 {
@@ -85,51 +88,71 @@ export default {
         },
         stop() {
             this.isRead = false;
-            this.frequency = 0;
+            this.frequency = this.string[0];
         },
         setContext() {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            _.forEach(this.strings, stringFreq => {
+                this.offsets.push(Math.round(this.ctx.sampleRate/stringFreq));
+            });
+
         },
         read() {
             let mic = this.ctx.createMediaStreamSource(this.audio),
                 analyser = this.ctx.createAnalyser(),
                 scriptProcessor = this.ctx.createScriptProcessor(),
                 filter1 = this.ctx.createBiquadFilter(),
-                filter2 = this.ctx.createBiquadFilter()
-
+                filter2 = this.ctx.createBiquadFilter();
+            //mic.volume=0.5;
             filter1.type = 'lowpass'; // High-pass filter (Тип фильтра)
-            filter1.frequency.value = this.string[3]; // Cutoff to 1kHZ (Базовая частота)
+            filter1.frequency.value = 360;//this.string[3]; // Cutoff to 1kHZ (Базовая частота)
             //filter1.frequency.Q = 1; // Quality factor (Добротность)
             mic.connect(filter1);
 
             filter2.type = 'highpass'; // High-pass filter (Тип фильтра)
-            filter2.frequency.value = this.string[0]; // Cutoff to 1kHZ (Базовая частота)
+            filter2.frequency.value = 40;//this.string[0]; // Cutoff to 1kHZ (Базовая частота)
             //filter2.frequency.Q = 1; // Quality factor (Добротность)
             filter1.connect(filter2);
 
             analyser.fftSize = 2048;
             analyser.minDecibels = -90;
             analyser.maxDecibels = -30;
-            analyser.smoothingTimeConstant = 0.30;
+            analyser.smoothingTimeConstant = 0.85;
             filter2.connect(analyser);
+            //mic.connect(analyser);
 
             analyser.connect(scriptProcessor);
             scriptProcessor.connect(this.ctx.destination);
             scriptProcessor.addEventListener("audioprocess", () => {
-                let frequency = this.string[0];
-                if (this.isRead) {
+                let frequency = this.frequency;
+                if (this.isRead && this.isTime) {
+                    this.isTime = false;
+                    setTimeout(()=>{
+                        this.isTime=true;
+                    }, 500);
                     let data = new Uint8Array(analyser.frequencyBinCount),
-                        largest = 0;
+                        largest = 0,
+                        lv,
+                        result;
                     analyser.getByteFrequencyData(data);
+
+                    /*let avgResult = 0;
+                    _.forEach(data, val =>{
+                        avgResult +=val*val;
+                    });
+                    avgResult = Math.sqrt(avgResult/data.length);*/
                     for (let i = 0; i < analyser.frequencyBinCount; i++) {
-                        if (data[i] >= data[largest]) {
+                        if (data[i] > data[largest]) {
                             largest = i;
+                            lv=data[i];
                         }
                     }
-                    frequency = largest * Math.ceil(this.ctx.sampleRate/analyser.fftSize);
-                    if(frequency>this.string[3]) frequency = this.string[3];
-                    else
-                        if(frequency<this.string[0]) frequency = this.string[0];
+                    result = largest*(this.ctx.sampleRate/analyser.fftSize);
+                    if(result>this.string[3]) frequency = this.string[3];
+                    else if(result<this.string[0]) frequency = this.string[0];
+                    else frequency = result;
+                    console.log('largest', largest,'lv',lv,'val',result);
+
                 }
                 this.frequency = Math.round(frequency*100)/100;
 
@@ -155,8 +178,9 @@ export default {
             });
         },
         setString(index=0){
-            let freq = this.strings[index];
+            let freq = Math.round(this.strings[index]);
             this.string = [freq-20, freq-5, freq+5, freq+20]
+            this.frequency = this.string[0];
         }
     },
     watch:{
