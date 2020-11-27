@@ -36,6 +36,7 @@
 <script>
 import VueSpeedometer from "vue-speedometer";
 import _ from "lodash";
+import dft from "../libs/fourier/dft";
 
 export default {
     name: "Tuner",
@@ -102,66 +103,33 @@ export default {
         read() {
             let mic = this.ctx.createMediaStreamSource(this.audio),
                 analyser = this.ctx.createAnalyser(),
-                scriptProcessor = this.ctx.createScriptProcessor(),
-                filter1 = this.ctx.createBiquadFilter(),
-                filter2 = this.ctx.createBiquadFilter();
-            //mic.volume=0.5;
-            filter1.type = 'lowpass'; // High-pass filter (Тип фильтра)
-            filter1.frequency.value = 360;//this.string[3]; // Cutoff to 1kHZ (Базовая частота)
-            //filter1.frequency.Q = 1; // Quality factor (Добротность)
-            mic.connect(filter1);
-
-            filter2.type = 'highpass'; // High-pass filter (Тип фильтра)
-            filter2.frequency.value = 40;//this.string[0]; // Cutoff to 1kHZ (Базовая частота)
-            //filter2.frequency.Q = 1; // Quality factor (Добротность)
-            filter1.connect(filter2);
+                scriptProcessor = this.ctx.createScriptProcessor();
 
             analyser.fftSize = 2048;
-            analyser.minDecibels = -90;
+           /* analyser.minDecibels = -90;
             analyser.maxDecibels = -30;
+           */
             analyser.smoothingTimeConstant = 0.85;
-            filter2.connect(analyser);
-            //mic.connect(analyser);
-
+            mic.connect(analyser);
             analyser.connect(scriptProcessor);
             scriptProcessor.connect(this.ctx.destination);
             scriptProcessor.addEventListener("audioprocess", () => {
-                let frequency = this.frequency;
+                let frequency = 0;
                 if (this.isRead && this.isTime) {
                     //this.isTime = false;
                     setTimeout(()=>{
                         this.isTime=true;
-                    }, 500);
-                    let data = new Uint8Array(analyser.frequencyBinCount),
-                        largest = 0,
-                        lv,
-                        timeData = new Uint8Array(analyser.frequencyBinCount),
-                        result;
-                   // analyser.getByteFrequencyData(data);
-                    analyser.getByteTimeDomainData(timeData);
-                    data = timeData;
-                    this.draw(timeData);
-                   // this.getFrequency(timeData);
-                    /*let avgResult = 0;
-                    _.forEach(data, val =>{
-                        avgResult +=val*val;
-                    });
-                    avgResult = Math.sqrt(avgResult/data.length);*/
-                    for (let i = 0; i < analyser.frequencyBinCount; i++) {
-                        if (data[i] > data[largest]) {
-                            largest = i;
-                            lv=data[i];
-                        }
-                    }
-                    result = 1 / (largest / this.ctx.sampleRate);
-                    //result = largest*(this.ctx.sampleRate/analyser.fftSize);
-                    if(result>this.string[3]) frequency = this.string[3];
-                    else if(result<this.string[0]) frequency = this.string[0];
-                    else frequency = result;
-                    console.log('largest', largest,'lv',lv,'val',result, 'avg', this.getAverageFrequency(data));
-
+                    }, 1000);
+                    let data = new Uint8Array(analyser.frequencyBinCount);
+                    // analyser.getByteFrequencyData(data);
+                    analyser.getByteTimeDomainData(data);
+                    this.draw(data);
+                    this.getFrequency(this.fourier(data), this.ctx.sampleRate);
+                    //this.drawFourier(this.fourier(data));
+                    //frequency = this.getFrequency(data, this.ctx.sampleRate);
                 }
-                this.frequency = Math.round(frequency*100)/100;
+               this.frequency = Math.round(frequency*100)/100;
+
 
             });
         },
@@ -204,18 +172,35 @@ export default {
                 canvasContext.fillRect(i, item, 1, 1);
             });
         },
-        getFrequency(data){
-            let lastPos = 0,
-                lastItem = 0;
-            _.forEach(data,(item, i) => {
-                if (item > 128 && lastItem <= 128) { // we have crossed below the mid point
-                    const elapsedSteps = i - lastPos; // how far since the last time we did this
-                    lastPos = i;
-                    const hertz = 1 / (elapsedSteps / this.ctx.sampleRate);
-                    this.frequency = hertz;
-                }
-                lastItem = item;
+        drawFourier(data) {
+            let canvas = document.getElementById("graph"),
+                canvasContext = canvas.getContext("2d");
+            canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+            _.forEach(data, (item) => {
+                canvasContext.fillRect(item.re*100, item.im*100, 1, 1);
             });
+        },
+        fourier(data){
+            let res = dft(data);
+            //console.log('data', data);
+            //console.log('res', res);
+            return res;
+        },
+        getFrequency(buffer, sampleRate) {
+            let maxKey = 0,
+                maxMagnitude = 0;
+            //console.log('buffer', buffer);
+            _.forEach(buffer, (item, key) => {
+                if(item.re<=1 && item.im<=1) {
+                    let m = Math.sqrt(item.re * item.re + item.im * item.im);
+                    if (m > maxMagnitude) {
+                        maxMagnitude = m;
+                        maxKey = key;
+                    }
+                }
+            });
+            let freq = maxKey*sampleRate/2048;
+            if(freq<1000) console.log(freq, maxMagnitude, maxKey);
         }
     },
     watch:{
